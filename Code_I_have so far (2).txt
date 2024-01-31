@@ -1,0 +1,146 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+#define MEMORY_SIZE 4096
+#define REGISTER_COUNT 16
+
+unsigned short memory[MEMORY_SIZE];
+unsigned short registers[REGISTER_COUNT];
+unsigned short PC = 0;
+bool status_flag = false;
+
+void load_instructions(void) {
+    unsigned short instruction;
+    int i = 0;
+    
+    while (scanf("%4hx", &instruction) != EOF) {
+        if (i >= MEMORY_SIZE) {
+            fprintf(stderr, "Error: Too many instructions. Exceeding MEMORY_SIZE.\n");
+            exit(1);
+        }
+        memory[i++] = instruction;
+    }
+    
+    // Append the termination instruction if there's space
+    if (i < MEMORY_SIZE) {
+        memory[i] = 0xDEAD;
+    }
+}
+
+
+void execute_instructions(void) {
+    while (1) {
+        unsigned short opcode = memory[PC] >> 12;
+        unsigned short operands = memory[PC] & 0x0FFF;
+
+        printf("Executing instruction at PC: 0x%04X, Opcode: 0x%X\n", PC, opcode);  // Debug print
+
+        switch (opcode) {
+        case 0xD: // BEQ (Branch-if-EQual)
+            if (status_flag) {
+                printf("Jumping from PC: 0x%04X to PC: 0x%04X (BEQ)\n", PC, PC + (short)operands);  // Debug print
+                PC += (short)operands; // signed addition for jump offset
+                continue; // skip incrementing PC below
+            }
+            break;
+        case 0xC: // LDR
+            {
+                unsigned char dest_reg = (operands & 0x0F00) >> 8;
+                unsigned char src_reg = (operands & 0x00F0) >> 4;
+                 printf("LDR: Reading from memory address: 0x%04X into register: R%d\n", registers[src_reg], dest_reg);  // Debug print
+                registers[dest_reg] = memory[registers[src_reg]];
+            }
+            break;
+        case 0xB: // STR
+            {
+                unsigned char src_reg = (operands & 0x0F00) >> 8;
+                unsigned char addr_reg = (operands & 0x00F0) >> 4;
+                printf("STR: Writing to memory address: 0x%04X from register: R%d\n", registers[addr_reg], src_reg);  // Debug print
+                memory[registers[addr_reg]] = registers[src_reg];
+            }
+            break;
+        case 0x0: // ADD
+            registers[operands >> 8] = registers[(operands & 0x0F0) >> 4] + registers[operands & 0x00FF];
+            break;
+        case 0x1: // SUB
+            registers[operands >> 8] = registers[(operands & 0x0F0) >> 4] - registers[operands & 0x00FF];
+            break;
+        case 0x2: // MUL
+            registers[operands >> 8] = registers[(operands & 0x0F0) >> 4] * registers[operands & 0x00FF];
+            break;
+        case 0x3: // DIV
+            if (registers[operands & 0x00FF] != 0) {
+                registers[operands >> 8] = registers[(operands & 0x0F0) >> 4] / registers[operands & 0x00FF];
+            }
+            break;
+        case 0x4: // AND
+            registers[operands >> 8] = registers[(operands & 0x0F0) >> 4] & registers[operands & 0x00FF];
+            break;
+        case 0x5: // ORR
+            registers[operands >> 8] = registers[(operands & 0x0F0) >> 4] | registers[operands & 0x00FF];
+            break;
+        case 0x6: // NOT
+            registers[operands >> 8] = ~registers[(operands & 0x0F0) >> 4];
+            break;
+        case 0x7: // SHL (Shift Left)
+            registers[operands >> 8] = registers[(operands & 0x0F0) >> 4] << (registers[operands & 0x00FF] & 0x0F);
+            break;
+        case 0x8: // SHR (Shift Right)
+            registers[operands >> 8] = registers[(operands & 0x0F0) >> 4] >> (registers[operands & 0x00FF] & 0x0F);
+            break;
+        case 0xA: // MOV
+            registers[operands >> 8] = operands & 0x00FF;
+            break;
+        case 0x9: // CMP
+            status_flag = (registers[operands >> 8] == registers[(operands & 0x0F0) >> 4]);
+            break;
+        case 0xE: // JMP
+            printf("Jumping from PC: 0x%04X to PC: 0x%04X (JMP)\n", PC, PC + (short)operands);  // Debug print
+            PC += (short)operands; // signed addition for jump offset
+            continue; // skip incrementing PC below
+        case 0xF: // JEQ
+            if (status_flag) {
+                printf("Jumping from PC: 0x%04X to PC: 0x%04X (JEQ)\n", PC, PC + (short)operands);  // Debug print
+                PC += (short)operands; // signed addition for jump offset
+                continue; // skip incrementing PC below
+            }
+            break;
+        case 0xDE: // DEAD
+            if (operands == 0xAD) {
+                return; // End execution
+            }
+            // If it's not the termination instruction, print an error
+            printf("Invalid opcode: %x\n", opcode);
+            exit(1);
+
+        default:
+            printf("Invalid opcode: %x\n", opcode);
+            exit(1);
+        }
+
+        PC++;
+    }
+}
+
+void display_state(void) {
+    for (int i = 0; i < REGISTER_COUNT; i++) {
+        printf("register %d: 0x%04X\n", i, registers[i]);
+    }
+    printf("register PC: 0x%04X\n", PC);
+    
+    for (int i = 0; i < MEMORY_SIZE; i += 16) {
+        printf("0x%04X: ", i);
+        for (int j = 0; j < 16; j++) {
+            printf("%04X ", memory[i + j]);
+        }
+        printf("\n");
+    }
+}
+
+int main(void) {
+    load_instructions();
+    execute_instructions();
+    display_state();
+    return 0;
+}
